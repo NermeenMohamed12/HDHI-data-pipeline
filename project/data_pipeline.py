@@ -1,88 +1,87 @@
-
-
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import numpy as np
 
+# =============================
+# 1️⃣ قراءة البيانات
+# =============================
 df = pd.read_csv("HDHI Admission data.csv")
-
 print("Initial Data Shape:", df.shape)
-print(df.head())
 
+# =============================
+# 2️⃣ إزالة الأعمدة الفريدة / التعريفية
+# =============================
+cols_to_drop = ["SNO", "MRD No.", "month year", "D.O.A", "D.O.D"]
+df.drop(columns=[col for col in cols_to_drop if col in df.columns], inplace=True)
+print("Dropped unique/identifier columns. Current shape:", df.shape)
 
-# =======================================================
-# 2) Handle Missing Values
-# =======================================================
+# =============================
+# 3️⃣ التعامل مع الأعمدة الرقمية
+# =============================
+numeric_cols = ["AGE", "DURATION OF STAY", "duration of intensive unit stay",
+                "SMOKING", "ALCOHOL", "DM", "HTN", "CAD", "PRIOR CMP",
+                "CKD", "HB", "TLC", "PLATELETS", "GLUCOSE", "UREA",
+                "CREATININE", "BNP", "EF"]
 
-# Fill numeric missing values with median
-numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns
 for col in numeric_cols:
-    df[col] = df[col].fillna(df[col].median())
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    else:
+        print(f"Warning: Column {col} not found, skipping.")
 
-# Fill categorical missing values with mode
-categorical_cols = df.select_dtypes(include=["object"]).columns
-for col in categorical_cols:
-    df[col] = df[col].fillna(df[col].mode()[0])
+existing_numeric_cols = [col for col in numeric_cols if col in df.columns]
+df[existing_numeric_cols] = df[existing_numeric_cols].fillna(df[existing_numeric_cols].median())
+print("Numeric columns cleaned.")
 
-print("Missing values handled successfully.")
+# =============================
+# 4️⃣ إزالة outliers باستخدام IQR
+# =============================
+def remove_outliers(df, columns):
+    for col in columns:
+        if col in df.columns:
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            lower = Q1 - 1.5 * IQR
+            upper = Q3 + 1.5 * IQR
+            df = df[(df[col] >= lower) & (df[col] <= upper)]
+    return df
 
-
-# =======================================================
-# 3) Remove Outliers for AGE + DURATION OF STAY
-# =======================================================
-
-def clean_outliers_iqr(data, column):
-    Q1 = data[column].quantile(0.25)
-    Q3 = data[column].quantile(0.75)
-    IQR = Q3 - Q1
-    lower = Q1 - 1.5 * IQR
-    upper = Q3 + 1.5 * IQR
-    return data[(data[column] >= lower) & (data[column] <= upper)]
-
-df = clean_outliers_iqr(df, "AGE")
-df = clean_outliers_iqr(df, "DURATION OF STAY")
-
+df = remove_outliers(df, existing_numeric_cols)
 print("Outliers removed. Current shape:", df.shape)
 
+# =============================
+# 5️⃣ تحويل الأعمدة الفئوية لـ One-Hot Encoding
+# =============================
+categorical_cols = ["GENDER", "RURAL", "TYPE OF ADMISSION-EMERGENCY/OPD",
+                    "OUTCOME", "CHEST INFECTION"]
 
-# =======================================================
-# 4) ENCODING CATEGORICAL COLUMNS
-# =======================================================
+existing_categorical_cols = [col for col in categorical_cols if col in df.columns]
+df = pd.get_dummies(df, columns=existing_categorical_cols, prefix_sep='_', drop_first=False)
+print("Categorical columns encoded.")
 
-# Columns in your dataset:
-#   - GENDER (M/F)
-#   - RURAL (R/U)
-#   - TYPE OF ADMISSION-EMERGENCY/OPD (E/OPD)
+# =============================
+# 6️⃣ تحويل الأعمدة True/False لـ 0/1
+# =============================
+for col in df.columns:
+    # لو العمود bool
+    if df[col].dtype == 'bool':
+        df[col] = df[col].astype(int)
+    # لو العمود object ويحتوي على نص "True"/"False"
+    elif df[col].dtype == 'object':
+        df[col] = df[col].replace({'True': 1, 'False': 0})
+        df[col] = df[col].fillna(0)  # لو فيه NaN نخليه 0
 
-df = pd.get_dummies(
-    df,
-    columns=["GENDER", "RURAL", "TYPE OF ADMISSION-EMERGENCY/OPD"],
-    drop_first=True
-)
+print("Boolean columns converted to 0/1.")
 
-print("Encoding completed. Current shape:", df.shape)
+# =============================
+# 7️⃣ التأكد من أنواع الأعمدة النهائية
+# =============================
+df = df.apply(pd.to_numeric, errors='ignore')
+print("Data preprocessing completed successfully.")
+print("Final shape:", df.shape)
 
-
-# =======================================================
-# 5) SPLITTING: Train (70%) - Validation (15%) - Test (15%)
-# =======================================================
-
-train, temp = train_test_split(df, test_size=0.3, random_state=42)
-val, test = train_test_split(temp, test_size=0.5, random_state=42)
-
-print("Train shape:", train.shape)
-print("Validation shape:", val.shape)
-print("Test shape:", test.shape)
-
-
-# =======================================================
-# 6) SAVE CLEANED DATA
-# =======================================================
-
-train.to_csv("train_data.csv", index=False)
-val.to_csv("val_data.csv", index=False)
-test.to_csv("test_data.csv", index=False)
-
-print("-----------------------------------------------------")
-print("DATA PIPELINE COMPLETED SUCCESSFULLY")
-print("Files saved: train_data.csv, val_data.csv, test_data.csv")
-print("-----------------------------------------------------")
+# =============================
+# 8️⃣ حفظ البيانات بعد التنظيف (اختياري)
+# =============================
+df.to_csv("HDHI_Admission_Cleaned.csv", index=False)
+print("Cleaned dataset saved to HDHI_Admission_Cleaned.csv")
