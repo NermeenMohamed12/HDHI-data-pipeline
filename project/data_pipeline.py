@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 
 # =============================
 # 1️⃣ قراءة البيانات
@@ -48,7 +49,7 @@ df = remove_outliers(df, existing_numeric_cols)
 print("Outliers removed. Current shape:", df.shape)
 
 # =============================
-# 5️⃣ تحويل الأعمدة الفئوية لـ One-Hot Encoding
+# 5️⃣ تحويل الأعمدة الفئوية لـ One-Hot Encoding (باستثناء OUTCOME)
 # =============================
 categorical_cols = ["GENDER", "RURAL", "TYPE OF ADMISSION-EMERGENCY/OPD", "CHEST INFECTION"]
 existing_categorical_cols = [col for col in categorical_cols if col in df.columns]
@@ -56,7 +57,7 @@ df = pd.get_dummies(df, columns=existing_categorical_cols, prefix_sep='_', drop_
 print("Categorical columns encoded.")
 
 # =============================
-# 6️⃣ تحويل الأعمدة True/False لـ 0/1
+# 6️⃣ تحويل True/False لـ 0/1
 # =============================
 for col in df.columns:
     if df[col].dtype == 'bool':
@@ -68,11 +69,12 @@ for col in df.columns:
 print("Boolean columns converted to 0/1.")
 
 # =============================
-# 7️⃣ التأكد من أنواع الأعمدة النهائية
+# 7️⃣ تحويل OUTCOME من string لأرقام
 # =============================
-df = df.apply(pd.to_numeric, errors='ignore')
-print("Data preprocessing completed successfully.")
-print("Final shape:", df.shape)
+if 'OUTCOME' in df.columns:
+    le = LabelEncoder()
+    df['OUTCOME'] = le.fit_transform(df['OUTCOME'])
+    print("OUTCOME converted to numeric labels:", dict(zip(le.classes_, le.transform(le.classes_))))
 
 # =============================
 # 8️⃣ تحديد الأعمدة المرضية كـ target
@@ -96,13 +98,14 @@ y = df[disease_columns]
 # =============================
 # تقسيم Test 15%
 X_temp, X_test, y_temp, y_test = train_test_split(
-    X, y, test_size=0.15, random_state=42, stratify=y[disease_columns[0]]  # stratify على مرض أساسي
+    X, y, test_size=0.15, random_state=42, stratify=df['OUTCOME'] if 'OUTCOME' in df.columns else None
 )
 
 # تقسيم الباقي لـ Train 70% و Validation 15%
 val_size = 0.176  # 0.176 من 85% ≈ 15% من الداتا الأصلية
 X_train, X_val, y_train, y_val = train_test_split(
-    X_temp, y_temp, test_size=val_size, random_state=42, stratify=y_temp[disease_columns[0]]
+    X_temp, y_temp, test_size=val_size, random_state=42,
+    stratify=y_temp[disease_columns[0]] if disease_columns else None
 )
 
 # إنشاء DataFrames منفصلة لكل مجموعة
